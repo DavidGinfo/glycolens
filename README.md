@@ -4,12 +4,14 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-1e40af.svg)](./backend/pyproject.toml)
 [![FastAPI](https://img.shields.io/badge/FastAPI-REST%20%2B%20SSE-0d9488.svg)](./docs/API_REFERENCE.md)
 [![React 19 + TypeScript](https://img.shields.io/badge/Frontend-React%2019%20%2B%20TS-0284c7.svg)](./frontend/package.json)
+[![Pitch Video](https://img.shields.io/badge/YouTube-Pitch%20Video-dc2626.svg?logo=youtube&logoColor=white)](https://youtu.be/JS5oRk-guWk)
 
 **Autonomous Multimodal Metabolic Pattern Discovery — Fusing CGM, Insulin Delivery, Smartwatch Workouts, Sleep Architecture & Blood Pressure**
 
 GlycoLens aligns 5-minute continuous glucose monitor (CGM) traces and insulin logs with smartwatch workouts, sleep stages, skin temperature, respiratory rate, and blood pressure on a unified local wall-clock timeline. Four **parallel Gemini specialist agents** audit domain hypotheses, verify every candidate against a deterministic **1,000-iteration nonparametric bootstrap (95% CI)** statistical engine, and present calm, progressive-disclosure insights for everyday users—backed by expandable clinical evidence.
 
-> **Deep-Dive Documentation for Jury Evaluation:**
+> **Pitch Video & Deep-Dive Documentation for Jury Evaluation:**
+> - **[Watch the GlycoLens Pitch Video on YouTube (`https://youtu.be/JS5oRk-guWk`)](https://youtu.be/JS5oRk-guWk)** — Project pitch and live product walkthrough.
 > - **[Technical Architecture & Mathematical Specification (`docs/TECHNICAL_ARCHITECTURE.md`)](./docs/TECHNICAL_ARCHITECTURE.md)** — Neuro-symbolic multi-agent sequence diagram, zero-hallucination statistical guarantee, 3.5h bilinear IOB equations, all 17 hypothesis probes, chronological-holdout Walk Rx Ridge regression, and 3-tier clinical safety guardrails.
 > - **[Complete REST, SSE & Webhook API Reference (`docs/API_REFERENCE.md`)](./docs/API_REFERENCE.md)** — All 12 backend HTTP/SSE endpoints, request/response schemas, SSE event protocol, and Glooko / Samsung Health / Cloud Sync data contracts.
 
