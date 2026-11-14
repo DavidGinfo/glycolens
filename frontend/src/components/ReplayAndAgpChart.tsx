@@ -3,7 +3,6 @@ import {
   Activity,
   Footprints,
   HeartPulse,
-  Layers,
   Moon,
   Syringe,
 } from 'lucide-react';
@@ -19,6 +18,7 @@ interface ReplayAndAgpChartProps {
   hourlyAgp: HourlyBucket[];
   replays: DayReplay[];
   daysCovered?: number;
+  preferredDate?: string | null;
 }
 
 type ChartMode = 'agp' | 'replay';
@@ -34,6 +34,7 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
   hourlyAgp,
   replays,
   daysCovered = 90,
+  preferredDate = null,
 }) => {
   const [mode, setMode] = useState<ChartMode>('replay');
   const [selectedReplayIdx, setSelectedReplayIdx] = useState<number>(0);
@@ -48,16 +49,24 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
     }
   }, [replays, hourlyAgp]);
 
+  useEffect(() => {
+    if (!preferredDate || replays.length === 0) return;
+    const matchIdx = replays.findIndex((r) => r.date === preferredDate);
+    if (matchIdx >= 0) {
+      setMode('replay');
+      setSelectedReplayIdx(matchIdx);
+    }
+  }, [preferredDate, replays]);
+
   const currentReplay: DayReplay | null =
     replays[selectedReplayIdx] ?? replays[0] ?? null;
 
-  // SVG coordinate system
   const W = 860;
-  const H = 350;
+  const H = 345;
   const padL = 48;
   const padR = 22;
   const padTop = 34;
-  const padBot = 58; // Extra room at bottom for <70 hypo bars & x-axis ticks
+  const padBot = 56;
   const plotW = W - padL - padR;
   const plotH = H - padTop - padBot;
 
@@ -70,10 +79,10 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
     return padTop + (1 - (clamped - yMin) / (yMax - yMin)) * plotH;
   };
 
-  // Build sorted AGP buckets (0..23 + wrap point at 24 for full width)
-  const sortedAgp = useMemo(() => {
-    return [...hourlyAgp].sort((a, b) => a.hour - b.hour);
-  }, [hourlyAgp]);
+  const sortedAgp = useMemo(
+    () => [...hourlyAgp].sort((a, b) => a.hour - b.hour),
+    [hourlyAgp]
+  );
 
   const agpPaths = useMemo(() => {
     if (sortedAgp.length === 0) return null;
@@ -105,7 +114,6 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
     return { polyP10P90, polyP25P75, medianLine };
   }, [sortedAgp]);
 
-  // Replay CGM path
   const replayCgmSorted = useMemo(() => {
     if (!currentReplay) return [];
     return [...currentReplay.cgm].sort((a, b) => a[0] - b[0]);
@@ -134,7 +142,6 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
     setHoverHour(Math.max(0, Math.min(23.99, hr)));
   };
 
-  // Hover tooltip computations
   const hoveredAgpBucket: HourlyBucket | null = useMemo(() => {
     if (mode !== 'agp' || hoverHour === null || sortedAgp.length === 0) return null;
     const targetHr = Math.floor(hoverHour);
@@ -182,54 +189,51 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
   const xHours = [0, 3, 6, 9, 12, 15, 18, 21, 24];
 
   return (
-    <div className="flex flex-col rounded-2xl border border-slate-800/90 bg-slate-900/70 p-5 shadow-xl shadow-black/25">
+    <div className="flex flex-col rounded-3xl border border-slate-200/90 bg-white p-6 shadow-xs">
       {/* Header & Mode Switcher */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-sky-500/15 text-sky-400 ring-1 ring-sky-500/30">
-              <Layers className="h-4 w-4" />
-            </span>
-            <h3 className="text-base font-semibold text-slate-100">
-              24h Multimodal Day Replay & Circadian AGP
-            </h3>
-          </div>
-          <p className="mt-0.5 text-xs text-slate-400">
+          <h3 className="text-base font-bold text-slate-900">
             {mode === 'replay'
-              ? 'Aligned CGM trajectory overlaid with Watch walks, overnight sleep window, pump boluses, and blood pressure.'
-              : `${Math.round(daysCovered)}-day Ambulatory Glucose Profile (Median, IQR P25–P75, P10–P90, and hourly <70 mg/dL hypo bars).`}
+              ? 'Example 24-Hour Days'
+              : `${Math.round(daysCovered)}-Day Hourly Profile`}
+          </h3>
+          <p className="mt-0.5 text-xs text-slate-500">
+            {mode === 'replay'
+              ? 'Blood sugar alongside your walks, sleep window, insulin boluses, and blood pressure.'
+              : 'Usual median curve, typical spread, and hourly low-sugar frequency.'}
           </p>
         </div>
 
-        <div className="inline-flex self-start rounded-xl border border-slate-800 bg-slate-950/80 p-1">
+        <div className="inline-flex self-start rounded-full border border-slate-200 bg-[#F8FAFC] p-1">
           <button
             type="button"
             onClick={() => setMode('replay')}
-            className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+            className={`cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
               mode === 'replay'
-                ? 'bg-sky-500/20 text-sky-300 ring-1 ring-sky-500/40'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-teal-700 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            24h Day Replays ({replays.length})
+            Example Days ({replays.length})
           </button>
           <button
             type="button"
             onClick={() => setMode('agp')}
-            className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+            className={`cursor-pointer rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
               mode === 'agp'
-                ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40'
-                : 'text-slate-400 hover:text-slate-200'
+                ? 'bg-teal-700 text-white shadow-2xs'
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            {Math.round(daysCovered)}d Circadian AGP
+            {Math.round(daysCovered)}-Day Average
           </button>
         </div>
       </div>
 
       {/* Day Replay Selector Pills */}
       {mode === 'replay' && replays.length > 0 && (
-        <div className="mt-3.5 flex flex-wrap gap-1.5">
+        <div className="mt-4 flex flex-wrap gap-2">
           {replays.map((rep, idx) => {
             const selected = idx === selectedReplayIdx;
             return (
@@ -237,10 +241,10 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
                 key={`${rep.date}-${idx}`}
                 type="button"
                 onClick={() => setSelectedReplayIdx(idx)}
-                className={`cursor-pointer rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                   selected
-                    ? 'border-sky-500/50 bg-sky-500/15 text-sky-200'
-                    : 'border-slate-800 bg-slate-950/60 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                    ? 'border-teal-600/50 bg-teal-50 text-teal-900'
+                    : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:text-slate-900'
                 }`}
               >
                 {rep.label}
@@ -251,54 +255,50 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
       )}
 
       {/* Legend Strip */}
-      <div className="mt-3 flex flex-wrap items-center gap-4 text-[11px] text-slate-400">
+      <div className="mt-3.5 flex flex-wrap items-center gap-4 text-xs text-slate-600">
         <span className="inline-flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500/25 ring-1 ring-emerald-500/50" />
-          Target 70–180 mg/dL
+          <span className="h-2.5 w-2.5 rounded-xs bg-teal-500/20 ring-1 ring-teal-600/40" />
+          Healthy Range (70–180)
         </span>
         {mode === 'replay' ? (
           <>
             <span className="inline-flex items-center gap-1.5">
-              <Footprints className="h-3.5 w-3.5 text-emerald-400" />
-              Watch Walk Band
+              <Footprints className="h-3.5 w-3.5 text-teal-700" />
+              Walk
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Moon className="h-3.5 w-3.5 text-indigo-400" />
-              Overnight Sleep Bar
+              <Moon className="h-3.5 w-3.5 text-indigo-600" />
+              Sleep
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <Syringe className="h-3.5 w-3.5 text-amber-400" />
-              Insulin Bolus (U / Carbs)
+              <Syringe className="h-3.5 w-3.5 text-amber-600" />
+              Insulin Bolus
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <HeartPulse className="h-3.5 w-3.5 text-rose-400" />
-              BP Reading
+              <HeartPulse className="h-3.5 w-3.5 text-red-600" />
+              Blood Pressure
             </span>
           </>
         ) : (
           <>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-0.5 w-4 bg-sky-400" />
-              Median CGM
+              <span className="h-0.5 w-4 bg-teal-700" />
+              Median Glucose
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-3 rounded-sm bg-sky-400/35" />
-              IQR (P25–P75)
+              <span className="h-2.5 w-3 rounded-xs bg-teal-600/25" />
+              Typical Spread (25–75%)
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-3 rounded-sm bg-sky-400/15" />
-              P10–P90
-            </span>
-            <span className="inline-flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-sm bg-rose-500/80" />
-              Hourly &lt;70 mg/dL Hypo %
+              <span className="h-2.5 w-2.5 rounded-xs bg-red-500/80" />
+              Low-Sugar Frequency
             </span>
           </>
         )}
       </div>
 
-      {/* Main Interactive SVG Canvas */}
-      <div className="relative mt-3 rounded-xl border border-slate-800/80 bg-slate-950/85 p-2">
+      {/* Daylight SVG Canvas */}
+      <div className="relative mt-3 rounded-2xl border border-slate-200/80 bg-[#F8FAFC] p-3">
         <svg
           ref={svgRef}
           viewBox={`0 0 ${W} ${H}`}
@@ -306,15 +306,25 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
           onMouseLeave={() => setHoverHour(null)}
           className="w-full cursor-crosshair select-none"
           role="img"
-          aria-label="24-hour glucose and multimodal overlay chart"
+          aria-label="24-hour blood sugar timeline"
         >
-          {/* Target In-Range Band (70 - 180 mg/dL) */}
+          {/* Inner crisp white plot background */}
+          <rect
+            x={padL}
+            y={padTop}
+            width={plotW}
+            height={plotH}
+            rx={6}
+            fill="#ffffff"
+          />
+
+          {/* Healthy Target Band (70 - 180 mg/dL) */}
           <rect
             x={padL}
             y={yOfMg(180)}
             width={plotW}
             height={yOfMg(70) - yOfMg(180)}
-            fill="rgba(16, 185, 129, 0.07)"
+            fill="rgba(13, 148, 136, 0.08)"
           />
 
           {/* Horizontal Grid Lines */}
@@ -330,23 +340,23 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
                   y2={y}
                   stroke={
                     val === 70
-                      ? 'rgba(244, 63, 94, 0.45)'
+                      ? '#fca5a5'
                       : val === 180
-                        ? 'rgba(16, 185, 129, 0.40)'
-                        : 'rgba(51, 65, 85, 0.35)'
+                        ? '#99f6e4'
+                        : '#f1f5f9'
                   }
-                  strokeDasharray={isBoundary ? '4 4' : '2 4'}
-                  strokeWidth={isBoundary ? 1.1 : 0.8}
+                  strokeDasharray={isBoundary ? '4 4' : undefined}
+                  strokeWidth={isBoundary ? 1.2 : 1}
                 />
                 <text
                   x={padL - 8}
                   y={y + 4}
                   textAnchor="end"
                   fill={
-                    val === 70 ? '#fda4af' : val === 180 ? '#6ee7b7' : '#94a3b8'
+                    val === 70 ? '#b91c1c' : val === 180 ? '#0f766e' : '#64748b'
                   }
-                  fontSize="10.5"
-                  fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                  fontSize="11"
+                  fontWeight={isBoundary ? '600' : '500'}
                 >
                   {val}
                 </text>
@@ -364,16 +374,16 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
                   y1={padTop}
                   x2={x}
                   y2={padTop + plotH}
-                  stroke="rgba(30, 41, 59, 0.7)"
-                  strokeWidth="0.8"
+                  stroke="#f1f5f9"
+                  strokeWidth="1"
                 />
                 <text
                   x={x}
                   y={H - 8}
                   textAnchor="middle"
-                  fill="#94a3b8"
-                  fontSize="10.5"
-                  fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                  fill="#64748b"
+                  fontSize="11"
+                  fontWeight="500"
                 >
                   {hr === 24 ? '24:00' : `${String(hr).padStart(2, '0')}:00`}
                 </text>
@@ -381,45 +391,44 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
             );
           })}
 
-          {/* ================= AGP MODE ================= */}
+          {/* AGP MODE */}
           {mode === 'agp' && agpPaths && (
             <g>
               <polygon
                 points={agpPaths.polyP10P90}
-                fill="rgba(56, 189, 248, 0.11)"
+                fill="rgba(15, 118, 110, 0.07)"
               />
               <polygon
                 points={agpPaths.polyP25P75}
-                fill="rgba(56, 189, 248, 0.24)"
+                fill="rgba(15, 118, 110, 0.16)"
               />
               <path
                 d={agpPaths.medianLine}
                 fill="none"
-                stroke="#38bdf8"
-                strokeWidth="2.6"
+                stroke="#0f766e"
+                strokeWidth="2.8"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               />
 
-              {/* Bottom Hourly <70 mg/dL Hypo Bars */}
               {sortedAgp.map((b) => {
                 const barSlotW = plotW / 24;
                 const bx = xOfHour(b.hour) + 2;
-                const maxHypoH = 26;
+                const maxHypoH = 22;
                 const hScaled = Math.min(
                   maxHypoH,
                   Math.max(b.low_pct > 0 ? 2.5 : 0, (b.low_pct / 20) * maxHypoH)
                 );
-                const by = padTop + plotH + 28 - hScaled;
+                const by = padTop + plotH + 26 - hScaled;
                 return (
                   <g key={`hypo-${b.hour}`}>
                     <rect
                       x={bx}
                       y={padTop + plotH + 6}
                       width={Math.max(4, barSlotW - 4)}
-                      height={22}
+                      height={20}
                       rx={2}
-                      fill="rgba(15, 23, 42, 0.85)"
+                      fill="#f1f5f9"
                     />
                     {hScaled > 0 && (
                       <rect
@@ -428,7 +437,7 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
                         width={Math.max(4, barSlotW - 4)}
                         height={hScaled}
                         rx={2}
-                        fill={b.low_pct >= 6 ? '#f43f5e' : 'rgba(244, 63, 94, 0.65)'}
+                        fill={b.low_pct >= 6 ? '#dc2626' : '#f87171'}
                       />
                     )}
                   </g>
@@ -436,21 +445,20 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
               })}
               <text
                 x={padL - 8}
-                y={padTop + plotH + 21}
+                y={padTop + plotH + 20}
                 textAnchor="end"
-                fill="#fb7185"
-                fontSize="9.5"
-                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                fill="#b91c1c"
+                fontSize="10"
+                fontWeight="600"
               >
-                &lt;70%
+                Lows
               </text>
             </g>
           )}
 
-          {/* ================= DAY REPLAY MODE ================= */}
+          {/* DAY REPLAY MODE */}
           {mode === 'replay' && currentReplay && (
             <g>
-              {/* Top Sleep Window Bar */}
               {currentReplay.sleep_end_hour != null &&
                 currentReplay.sleep_end_hour > 0 && (
                   <g>
@@ -458,31 +466,31 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
                       x={padL}
                       y={8}
                       width={Math.max(16, xOfHour(currentReplay.sleep_end_hour) - padL)}
-                      height={18}
+                      height={19}
                       rx={6}
-                      fill="rgba(99, 102, 241, 0.25)"
-                      stroke="rgba(129, 140, 248, 0.55)"
+                      fill="#eef2ff"
+                      stroke="#c7d2fe"
                       strokeWidth="1"
                     />
                     <text
                       x={padL + 8}
-                      y={20}
-                      fill="#c7d2fe"
-                      fontSize="10"
+                      y={21}
+                      fill="#3730a3"
+                      fontSize="10.5"
                       fontWeight="600"
                     >
-                      Sleep until {formatHourClock(currentReplay.sleep_end_hour)}
+                      Asleep until {formatHourClock(currentReplay.sleep_end_hour)}
                     </text>
                   </g>
                 )}
 
-              {/* Green Watch Walk Vertical Bands */}
               {currentReplay.walks.map((w, idx) => {
                 const sHr = w.start_hour ?? w.hour ?? 0;
                 const eHr =
-                  w.end_hour ?? Math.min(24, sHr + Math.max(w.duration_min ?? 25, 12) / 60);
+                  w.end_hour ??
+                  Math.min(24, sHr + Math.max(w.duration_min ?? 25, 12) / 60);
                 const wx = xOfHour(sHr);
-                const ww = Math.max(10, xOfHour(eHr) - wx);
+                const ww = Math.max(12, xOfHour(eHr) - wx);
                 return (
                   <g key={`walk-${idx}`}>
                     <rect
@@ -490,23 +498,23 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
                       y={padTop}
                       width={ww}
                       height={plotH}
-                      fill="rgba(16, 185, 129, 0.16)"
-                      stroke="rgba(16, 185, 129, 0.5)"
+                      fill="rgba(13, 148, 136, 0.11)"
+                      stroke="rgba(13, 148, 136, 0.35)"
                       strokeWidth="1"
                     />
                     <rect
                       x={wx}
                       y={padTop}
                       width={ww}
-                      height={16}
-                      fill="rgba(16, 185, 129, 0.30)"
+                      height={17}
+                      fill="#ccfbf1"
                     />
                     <text
                       x={wx + ww / 2}
-                      y={padTop + 11.5}
+                      y={padTop + 12}
                       textAnchor="middle"
-                      fill="#a7f3d0"
-                      fontSize="9.5"
+                      fill="#115e59"
+                      fontSize="10"
                       fontWeight="700"
                     >
                       Walk {w.steps ? `${Math.round(w.steps / 100) / 10}k` : ''}
@@ -515,13 +523,12 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
                 );
               })}
 
-              {/* CGM Line + Colored Dots */}
               {replayPath && (
                 <path
                   d={replayPath}
                   fill="none"
-                  stroke="#38bdf8"
-                  strokeWidth="2.4"
+                  stroke="#0f172a"
+                  strokeWidth="2.3"
                   strokeLinecap="round"
                   strokeLinejoin="round"
                 />
@@ -529,19 +536,18 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
               {replayCgmSorted.map(([hr, mg], idx) => {
                 if (mg >= 70 && mg <= 180 && idx % 3 !== 0) return null;
                 const fill =
-                  mg < 70 ? '#f43f5e' : mg > 180 ? '#f59e0b' : '#34d399';
+                  mg < 70 ? '#dc2626' : mg > 180 ? '#d97706' : '#0f766e';
                 return (
                   <circle
                     key={`pt-${idx}`}
                     cx={xOfHour(hr)}
                     cy={yOfMg(mg)}
-                    r={mg < 70 || mg > 220 ? 3.2 : 2.2}
+                    r={mg < 70 || mg > 220 ? 3.2 : 2.3}
                     fill={fill}
                   />
                 );
               })}
 
-              {/* Bolus Markers */}
               {currentReplay.boluses.map((b, idx) => {
                 const bx = xOfHour(b.hour);
                 const bgY =
@@ -556,55 +562,55 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
                       y1={bgY}
                       x2={bx}
                       y2={padTop + plotH + 14}
-                      stroke={unlogged ? 'rgba(245, 158, 11, 0.5)' : 'rgba(56, 189, 248, 0.5)'}
+                      stroke={unlogged ? '#f59e0b' : '#0284c7'}
                       strokeDasharray="2 2"
                       strokeWidth="1"
                     />
                     <polygon
                       points={`${bx},${padTop + plotH + 6} ${bx + 5},${padTop + plotH + 13} ${bx},${padTop + plotH + 20} ${bx - 5},${padTop + plotH + 13}`}
-                      fill={unlogged ? '#f59e0b' : '#38bdf8'}
-                      stroke="#020617"
+                      fill={unlogged ? '#f59e0b' : '#0284c7'}
+                      stroke="#ffffff"
                       strokeWidth="1"
                     />
                     <text
                       x={bx}
                       y={padTop + plotH + 31}
                       textAnchor="middle"
-                      fill={unlogged ? '#fcd34d' : '#bae6fd'}
-                      fontSize="9"
-                      fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
+                      fill="#475569"
+                      fontSize="9.5"
+                      fontWeight="600"
                     >
-                      {b.units.toFixed(1)}U
+                      {b.units.toFixed(1)}u
                     </text>
                   </g>
                 );
               })}
 
-              {/* BP Event Badges */}
               {currentReplay.bp_events.map((bp, idx) => {
                 const bpx = xOfHour(bp.hour);
                 const bpy = padTop + 26;
-                const label = `${Math.round(bp.systolic_bp)}/${Math.round(bp.diastolic_bp ?? 80)}`;
+                const label = `${Math.round(bp.systolic_bp)}/${Math.round(
+                  bp.diastolic_bp ?? 80
+                )}`;
                 return (
                   <g key={`bp-${idx}`}>
                     <rect
-                      x={bpx - 28}
+                      x={bpx - 30}
                       y={bpy - 10}
-                      width={56}
+                      width={60}
                       height={18}
                       rx={9}
-                      fill="rgba(244, 63, 94, 0.2)"
-                      stroke="rgba(251, 113, 133, 0.65)"
+                      fill="#fef2f2"
+                      stroke="#fecaca"
                       strokeWidth="1"
                     />
                     <text
                       x={bpx}
                       y={bpy + 2.5}
                       textAnchor="middle"
-                      fill="#fecdd3"
+                      fill="#991b1b"
                       fontSize="9.5"
                       fontWeight="700"
-                      fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
                     >
                       BP {label}
                     </text>
@@ -621,91 +627,82 @@ export const ReplayAndAgpChart: React.FC<ReplayAndAgpChartProps> = ({
               y1={padTop}
               x2={xOfHour(hoverHour)}
               y2={padTop + plotH}
-              stroke="rgba(226, 232, 240, 0.6)"
+              stroke="#64748b"
               strokeDasharray="3 3"
               strokeWidth="1.2"
             />
           )}
         </svg>
 
-        {/* Interactive Hover Readout Strip */}
-        <div className="mt-1 flex min-h-[34px] flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-800/80 bg-slate-900/90 px-3 py-1.5 text-xs">
+        {/* Clean Hover Readout */}
+        <div className="mt-2 flex min-h-[34px] flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200/80 bg-white px-3.5 py-2 text-xs text-slate-600">
           {hoverHour === null ? (
-            <span className="flex items-center gap-1.5 text-slate-400">
-              <Activity className="h-3.5 w-3.5 text-sky-400" />
-              Hover anywhere across the 24h timeline to inspect synchronized CGM, sleep, walk, bolus, and BP telemetry.
+            <span className="flex items-center gap-1.5 text-slate-500">
+              <Activity className="h-3.5 w-3.5 text-teal-700" />
+              Move cursor across the chart to inspect glucose, sleep, walks, and insulin at any hour.
             </span>
           ) : mode === 'agp' && hoveredAgpBucket ? (
-            <div className="flex flex-wrap items-center gap-3 font-mono text-[11px]">
-              <span className="font-semibold text-sky-300">
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="font-bold text-slate-900">
                 {String(hoveredAgpBucket.hour).padStart(2, '0')}:00–
                 {String((hoveredAgpBucket.hour + 1) % 24).padStart(2, '0')}:00
               </span>
-              <span className="text-slate-200">
-                Median: <strong>{hoveredAgpBucket.median_cgm.toFixed(0)} mg/dL</strong>
+              <span>
+                Usual: <strong className="text-slate-900">{hoveredAgpBucket.median_cgm.toFixed(0)} mg/dL</strong>
               </span>
-              <span className="text-slate-300">
-                IQR: {hoveredAgpBucket.p25.toFixed(0)}–{hoveredAgpBucket.p75.toFixed(0)}
+              <span>
+                Typical spread: {hoveredAgpBucket.p25.toFixed(0)}–{hoveredAgpBucket.p75.toFixed(0)}
               </span>
-              <span className="text-slate-400">
-                P10–P90: {hoveredAgpBucket.p10.toFixed(0)}–{hoveredAgpBucket.p90.toFixed(0)}
-              </span>
-              <span className="text-emerald-300">
-                TIR: {hoveredAgpBucket.tir_pct.toFixed(0)}%
+              <span className="font-semibold text-teal-800">
+                In Range: {hoveredAgpBucket.tir_pct.toFixed(0)}%
               </span>
               <span
                 className={
                   hoveredAgpBucket.low_pct >= 4
-                    ? 'font-semibold text-rose-400'
-                    : 'text-slate-400'
+                    ? 'font-semibold text-red-700'
+                    : 'text-slate-500'
                 }
               >
-                &lt;70 Hypo: {hoveredAgpBucket.low_pct.toFixed(1)}%
+                Below 70: {hoveredAgpBucket.low_pct.toFixed(1)}%
               </span>
             </div>
           ) : mode === 'replay' && hoveredReplayDetails ? (
-            <div className="flex flex-wrap items-center gap-2.5 text-[11px]">
-              <span className="font-mono font-semibold text-sky-300">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="font-bold text-slate-900">
                 {formatHourClock(hoverHour)}
               </span>
               {hoveredReplayDetails.nearestCgm && (
-                <span className="rounded bg-slate-800 px-2 py-0.5 font-mono text-slate-100">
-                  CGM:{' '}
-                  <strong>
-                    {hoveredReplayDetails.nearestCgm[1].toFixed(0)} mg/dL
-                  </strong>
+                <span className="rounded-md bg-slate-100 px-2 py-0.5 font-semibold text-slate-900">
+                  {hoveredReplayDetails.nearestCgm[1].toFixed(0)} mg/dL
                 </span>
               )}
               {hoveredReplayDetails.inSleep && (
-                <span className="rounded bg-indigo-500/20 px-2 py-0.5 text-indigo-200">
+                <span className="rounded-md bg-indigo-50 px-2 py-0.5 font-medium text-indigo-800">
                   Asleep
                 </span>
               )}
               {hoveredReplayDetails.activeWalk && (
-                <span className="rounded bg-emerald-500/20 px-2 py-0.5 font-mono text-emerald-200">
+                <span className="rounded-md bg-teal-50 px-2 py-0.5 font-medium text-teal-900">
                   Walk: {hoveredReplayDetails.activeWalk.steps ?? 0} steps ·{' '}
-                  {hoveredReplayDetails.activeWalk.duration_min ?? 0}m
+                  {hoveredReplayDetails.activeWalk.duration_min ?? 0} min
                   {hoveredReplayDetails.activeWalk.delta_cgm != null
-                    ? ` (Δ ${hoveredReplayDetails.activeWalk.delta_cgm > 0 ? '+' : ''}${hoveredReplayDetails.activeWalk.delta_cgm.toFixed(0)} mg/dL, IOB ${(hoveredReplayDetails.activeWalk.iob_at_start ?? 0).toFixed(1)}U)`
+                    ? ` (${hoveredReplayDetails.activeWalk.delta_cgm > 0 ? '+' : ''}${hoveredReplayDetails.activeWalk.delta_cgm.toFixed(0)} mg/dL)`
                     : ''}
                 </span>
               )}
               {hoveredReplayDetails.nearBolus && (
-                <span className="rounded bg-amber-500/20 px-2 py-0.5 font-mono text-amber-200">
-                  Bolus: {hoveredReplayDetails.nearBolus.units.toFixed(2)}U ·{' '}
+                <span className="rounded-md bg-amber-50 px-2 py-0.5 font-medium text-amber-900">
+                  Insulin: {hoveredReplayDetails.nearBolus.units.toFixed(1)} units
                   {hoveredReplayDetails.nearBolus.carbs_g &&
                   hoveredReplayDetails.nearBolus.carbs_g > 0
-                    ? `${hoveredReplayDetails.nearBolus.carbs_g.toFixed(0)}g carbs`
-                    : '0g carbs logged'}
+                    ? ` · ${hoveredReplayDetails.nearBolus.carbs_g.toFixed(0)}g carbs`
+                    : ''}
                 </span>
               )}
               {hoveredReplayDetails.nearBp && (
-                <span className="rounded bg-rose-500/20 px-2 py-0.5 font-mono text-rose-200">
+                <span className="rounded-md bg-red-50 px-2 py-0.5 font-medium text-red-900">
                   BP: {Math.round(hoveredReplayDetails.nearBp.systolic_bp)}/
                   {Math.round(hoveredReplayDetails.nearBp.diastolic_bp ?? 80)} mmHg
-                  {hoveredReplayDetails.nearBp.pulse_bpm
-                    ? ` · ${Math.round(hoveredReplayDetails.nearBp.pulse_bpm)} bpm`
-                    : ''}
                 </span>
               )}
             </div>

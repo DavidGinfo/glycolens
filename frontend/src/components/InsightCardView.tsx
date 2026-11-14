@@ -1,14 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import {
-  AlertTriangle,
+  ArrowRight,
   CalendarClock,
-  CheckCircle2,
-  FlaskConical,
+  ChevronDown,
+  ChevronUp,
   Footprints,
   HeartPulse,
   Moon,
-  ShieldCheck,
-  Sparkles,
   Stethoscope,
   Syringe,
 } from 'lucide-react';
@@ -22,6 +20,8 @@ import type {
 interface InsightCardViewProps {
   insights: InsightCard[];
   isDiscovering: boolean;
+  onOpenWalkSimulator?: () => void;
+  onInspectDate?: (dateStr: string) => void;
 }
 
 type FilterTab = 'all' | InsightCategory;
@@ -30,65 +30,40 @@ const DOMAIN_META: Record<
   SpecialistDomain,
   {
     label: string;
-    badgeClass: string;
     Icon: React.ComponentType<{ className?: string }>;
   }
 > = {
-  activity: {
-    label: 'Activity & Movement',
-    badgeClass: 'border-emerald-500/35 bg-emerald-500/10 text-emerald-300',
-    Icon: Footprints,
-  },
-  sleep: {
-    label: 'Sleep & Circadian',
-    badgeClass: 'border-indigo-500/35 bg-indigo-500/10 text-indigo-300',
-    Icon: Moon,
-  },
-  dosing: {
-    label: 'Dosing & Habits',
-    badgeClass: 'border-sky-500/35 bg-sky-500/10 text-sky-300',
-    Icon: Syringe,
-  },
-  vitals: {
-    label: 'Vitals & BP',
-    badgeClass: 'border-rose-500/35 bg-rose-500/10 text-rose-300',
-    Icon: HeartPulse,
-  },
+  activity: { label: 'Movement', Icon: Footprints },
+  sleep: { label: 'Sleep & Morning', Icon: Moon },
+  dosing: { label: 'Meals & Insulin', Icon: Syringe },
+  vitals: { label: 'Body Vitals', Icon: HeartPulse },
 };
 
 const CATEGORY_META: Record<
   InsightCategory,
   {
     label: string;
-    pillClass: string;
-    Icon: React.ComponentType<{ className?: string }>;
+    actionPrefix: string;
   }
 > = {
   habit_experiment: {
-    label: 'Habit Experiment',
-    pillClass: 'border-teal-500/30 bg-teal-500/10 text-teal-300',
-    Icon: FlaskConical,
+    label: 'Daily Habit',
+    actionPrefix: 'What to try:',
   },
   pre_activity_shield: {
-    label: 'Pre-Activity Shield',
-    pillClass: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-300',
-    Icon: ShieldCheck,
+    label: 'Pre-Walk Check',
+    actionPrefix: 'Before walking:',
   },
   doctor_discussion: {
-    label: 'Question for Doctor',
-    pillClass: 'border-amber-500/35 bg-amber-500/15 text-amber-300',
-    Icon: Stethoscope,
+    label: 'Topic for Your Doctor',
+    actionPrefix: 'Question for your doctor:',
   },
 };
 
 function formatVal(val: number, unit: string): string {
   const abs = Math.abs(val);
   const formatted =
-    Number.isInteger(val) || abs >= 100
-      ? val.toFixed(0)
-      : abs >= 10
-        ? val.toFixed(1)
-        : val.toFixed(1);
+    Number.isInteger(val) || abs >= 100 ? val.toFixed(0) : val.toFixed(1);
   if (!unit) return formatted;
   return unit === '%' ? `${formatted}%` : `${formatted} ${unit}`;
 }
@@ -98,195 +73,59 @@ function formatSigned(val: number): string {
   return val > 0 ? `+${str}` : str;
 }
 
-const PairedBarSvgChart: React.FC<{ card: InsightCard }> = ({ card }) => {
-  const [hoveredIdx, setHoveredIdx] = useState<number | null>(null);
-  const { evidence } = card;
-  const spec = evidence.chart_spec;
+const SimpleTwoBarComparison: React.FC<{
+  bar: PairedBarItem;
+  condALabel: string;
+  condBLabel: string;
+}> = ({ bar, condALabel, condBLabel }) => {
+  const absA = Math.abs(bar.condition_a_val);
+  const absB = Math.abs(bar.condition_b_val);
+  const denom = Math.max(bar.max_val || 0, absA, absB, 1e-6);
 
-  const bars: PairedBarItem[] = useMemo(() => {
-    if (spec?.bars && spec.bars.length > 0) {
-      return spec.bars;
-    }
-    const maxVal = Math.max(Math.abs(evidence.mean_a), Math.abs(evidence.mean_b), 1) * 1.15;
-    return [
-      {
-        label: evidence.title,
-        condition_a_val: evidence.mean_a,
-        condition_b_val: evidence.mean_b,
-        max_val: maxVal,
-        unit: evidence.unit,
-        higher_is_better: evidence.mean_b >= evidence.mean_a,
-      },
-    ];
-  }, [spec, evidence]);
-
-  const condALabel = spec?.condition_a_label || 'Baseline / Risk Pattern';
-  const condBLabel = spec?.condition_b_label || 'Target / Protective Pattern';
-
-  const svgWidth = 480;
-  const rowHeight = 76;
-  const topPad = 10;
-  const svgHeight = topPad + bars.length * rowHeight + 8;
-  const barStartX = 16;
-  const maxBarWidth = 315;
+  const pctA = Math.max(8, Math.min(100, (absA / denom) * 100));
+  const pctB = Math.max(8, Math.min(100, (absB / denom) * 100));
 
   return (
-    <div className="rounded-xl border border-slate-800/90 bg-slate-950/80 p-3.5">
-      {/* Legend + Sample sizes + 95% CI badge */}
-      <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-        <div className="flex flex-wrap items-center gap-3">
-          <span className="inline-flex items-center gap-1.5 text-slate-300">
-            <span className="h-2.5 w-2.5 rounded-sm bg-gradient-to-r from-rose-500 to-amber-500" />
-            <span className="truncate max-w-[165px]" title={condALabel}>
+    <div className="rounded-2xl border border-slate-200/80 bg-[#F8FAFC] p-4">
+      <div className="mb-3 text-xs font-semibold text-slate-500">{bar.label}</div>
+
+      <div className="space-y-3">
+        {/* Pattern A (Trigger / Current Risk) */}
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between gap-2 text-xs">
+            <span className="truncate font-medium text-slate-600" title={condALabel}>
               {condALabel}
             </span>
-            <span className="font-mono text-slate-400">(n={evidence.n_a})</span>
-          </span>
-          <span className="inline-flex items-center gap-1.5 text-slate-200">
-            <span className="h-2.5 w-2.5 rounded-sm bg-gradient-to-r from-emerald-500 to-teal-400" />
-            <span className="truncate max-w-[165px]" title={condBLabel}>
-              {condBLabel}
+            <span className="shrink-0 font-bold text-amber-800">
+              {formatVal(bar.condition_a_val, bar.unit)}
             </span>
-            <span className="font-mono text-slate-400">(n={evidence.n_b})</span>
-          </span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80">
+            <div
+              className="h-full rounded-full bg-amber-500/85 transition-all duration-500"
+              style={{ width: `${pctA}%` }}
+            />
+          </div>
         </div>
 
-        <span className="inline-flex items-center gap-1 rounded-md border border-emerald-500/30 bg-emerald-500/10 px-2 py-0.5 font-mono text-[10px] font-medium text-emerald-300">
-          95% CI [{formatSigned(evidence.ci_95_low)}, {formatSigned(evidence.ci_95_high)}]{' '}
-          {evidence.unit}
-        </span>
+        {/* Pattern B (Healthier / Baseline Comparison) */}
+        <div className="space-y-1.5">
+          <div className="flex items-baseline justify-between gap-2 text-xs">
+            <span className="truncate font-medium text-slate-800" title={condBLabel}>
+              {condBLabel}
+            </span>
+            <span className="shrink-0 font-bold text-teal-800">
+              {formatVal(bar.condition_b_val, bar.unit)}
+            </span>
+          </div>
+          <div className="h-2.5 w-full overflow-hidden rounded-full bg-slate-200/80">
+            <div
+              className="h-full rounded-full bg-teal-600 transition-all duration-500"
+              style={{ width: `${pctB}%` }}
+            />
+          </div>
+        </div>
       </div>
-
-      {/* Custom SVG Paired Bar Chart */}
-      <svg
-        viewBox={`0 0 ${svgWidth} ${svgHeight}`}
-        className="w-full select-none overflow-visible"
-        role="img"
-        aria-label={`Paired comparison chart for ${card.headline}`}
-      >
-        <defs>
-          <linearGradient id={`grad-a-${card.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#f43f5e" stopOpacity="0.9" />
-            <stop offset="100%" stopColor="#f59e0b" stopOpacity="0.9" />
-          </linearGradient>
-          <linearGradient id={`grad-b-${card.id}`} x1="0%" y1="0%" x2="100%" y2="0%">
-            <stop offset="0%" stopColor="#10b981" stopOpacity="0.95" />
-            <stop offset="100%" stopColor="#2dd4bf" stopOpacity="0.95" />
-          </linearGradient>
-        </defs>
-
-        {bars.map((item, idx) => {
-          const yBase = topPad + idx * rowHeight;
-          const absA = Math.abs(item.condition_a_val);
-          const absB = Math.abs(item.condition_b_val);
-          const denom = Math.max(item.max_val || 0, absA, absB, 1e-6);
-          const widthA = Math.max(8, Math.min(maxBarWidth, (absA / denom) * maxBarWidth));
-          const widthB = Math.max(8, Math.min(maxBarWidth, (absB / denom) * maxBarWidth));
-          const delta = item.condition_b_val - item.condition_a_val;
-          const isHovered = hoveredIdx === idx;
-
-          return (
-            <g
-              key={`${item.label}-${idx}`}
-              onMouseEnter={() => setHoveredIdx(idx)}
-              onMouseLeave={() => setHoveredIdx(null)}
-              className="cursor-pointer"
-            >
-              {isHovered && (
-                <rect
-                  x={4}
-                  y={yBase - 4}
-                  width={svgWidth - 8}
-                  height={rowHeight - 4}
-                  rx={8}
-                  fill="rgba(30, 41, 59, 0.45)"
-                />
-              )}
-
-              {/* Metric Label + Delta Pill */}
-              <text
-                x={barStartX}
-                y={yBase + 13}
-                fill="#e2e8f0"
-                fontSize="11.5"
-                fontWeight="600"
-              >
-                {item.label}
-              </text>
-              <text
-                x={svgWidth - 14}
-                y={yBase + 13}
-                textAnchor="end"
-                fill="#34d399"
-                fontSize="10.5"
-                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-              >
-                Δ {formatSigned(delta)} {item.unit}
-              </text>
-
-              {/* Condition A Track + Bar (Risky / Baseline) */}
-              <rect
-                x={barStartX}
-                y={yBase + 21}
-                width={maxBarWidth}
-                height={15}
-                rx={4}
-                fill="rgba(15, 23, 42, 0.9)"
-                stroke="rgba(51, 65, 85, 0.5)"
-                strokeWidth="0.75"
-              />
-              <rect
-                x={barStartX}
-                y={yBase + 21}
-                width={widthA}
-                height={15}
-                rx={4}
-                fill={`url(#grad-a-${card.id})`}
-              />
-              <text
-                x={barStartX + widthA + 8}
-                y={yBase + 32}
-                fill="#fda4af"
-                fontSize="11"
-                fontWeight="600"
-                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-              >
-                {formatVal(item.condition_a_val, item.unit)}
-              </text>
-
-              {/* Condition B Track + Bar (Improved / Target) */}
-              <rect
-                x={barStartX}
-                y={yBase + 42}
-                width={maxBarWidth}
-                height={15}
-                rx={4}
-                fill="rgba(15, 23, 42, 0.9)"
-                stroke="rgba(51, 65, 85, 0.5)"
-                strokeWidth="0.75"
-              />
-              <rect
-                x={barStartX}
-                y={yBase + 42}
-                width={widthB}
-                height={15}
-                rx={4}
-                fill={`url(#grad-b-${card.id})`}
-              />
-              <text
-                x={barStartX + widthB + 8}
-                y={yBase + 53}
-                fill="#6ee7b7"
-                fontSize="11"
-                fontWeight="700"
-                fontFamily="ui-monospace, SFMono-Regular, Menlo, monospace"
-              >
-                {formatVal(item.condition_b_val, item.unit)}
-              </text>
-            </g>
-          );
-        })}
-      </svg>
     </div>
   );
 };
@@ -294,8 +133,16 @@ const PairedBarSvgChart: React.FC<{ card: InsightCard }> = ({ card }) => {
 export const InsightCardView: React.FC<InsightCardViewProps> = ({
   insights,
   isDiscovering,
+  onOpenWalkSimulator,
+  onInspectDate,
 }) => {
   const [activeTab, setActiveTab] = useState<FilterTab>('all');
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [showAllCards, setShowAllCards] = useState(false);
+
+  const toggleCard = (id: string) => {
+    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const counts = useMemo(() => {
     return {
@@ -313,39 +160,41 @@ export const InsightCardView: React.FC<InsightCardViewProps> = ({
     return sorted.filter((i) => i.category === activeTab);
   }, [insights, activeTab]);
 
+  const INITIAL_VISIBLE = 4;
+  const visibleInsights =
+    showAllCards || activeTab !== 'all'
+      ? filteredInsights
+      : filteredInsights.slice(0, INITIAL_VISIBLE);
+  const hiddenCount = filteredInsights.length - visibleInsights.length;
+
   const tabs: Array<{ id: FilterTab; label: string; count: number }> = [
-    { id: 'all', label: 'All Verified', count: counts.all },
-    {
-      id: 'habit_experiment',
-      label: 'Habit Experiments',
-      count: counts.habit_experiment,
-    },
+    { id: 'all', label: 'All', count: counts.all },
+    { id: 'habit_experiment', label: 'Daily Habits', count: counts.habit_experiment },
     {
       id: 'pre_activity_shield',
-      label: 'Pre-Activity Shields',
+      label: 'Walks & Exercise',
       count: counts.pre_activity_shield,
     },
-    {
-      id: 'doctor_discussion',
-      label: 'Questions for Doctor',
-      count: counts.doctor_discussion,
-    },
+    { id: 'doctor_discussion', label: 'Ask Doctor', count: counts.doctor_discussion },
   ];
 
   return (
-    <section className="space-y-4">
-      {/* Header & Category Filter Tabs */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <section className="space-y-5">
+      {/* Header & Calm Segmented Filter */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <h2 className="text-lg font-semibold tracking-tight text-slate-100">
-            Verified Actionable Findings
+          <p className="text-xs font-semibold uppercase tracking-wider text-teal-700">
+            Personal Insights
+          </p>
+          <h2 className="mt-0.5 text-xl font-bold tracking-tight text-slate-900 sm:text-2xl">
+            Your Most Important Findings
           </h2>
-          <p className="text-xs text-slate-400">
-            Every card below is backed by statistically significant personal evidence (bootstrap 95% CI excluding zero).
+          <p className="mt-0.5 text-sm text-slate-500">
+            Select any card to see why it happens and view specific dates from your history.
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1.5 rounded-xl border border-slate-800 bg-slate-900/80 p-1">
+        <div className="inline-flex flex-wrap items-center gap-1 rounded-full border border-slate-200 bg-white p-1 shadow-2xs">
           {tabs.map((tab) => {
             const active = activeTab === tab.id;
             return (
@@ -353,157 +202,297 @@ export const InsightCardView: React.FC<InsightCardViewProps> = ({
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+                className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition ${
                   active
-                    ? 'bg-emerald-500/20 text-emerald-300 ring-1 ring-emerald-500/40'
-                    : 'text-slate-400 hover:bg-slate-800/70 hover:text-slate-200'
+                    ? 'bg-teal-700 text-white shadow-2xs'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
                 }`}
               >
                 <span>{tab.label}</span>
-                <span
-                  className={`rounded-full px-1.5 py-0.2 font-mono text-[10px] ${
-                    active
-                      ? 'bg-emerald-500/25 text-emerald-200'
-                      : 'bg-slate-800 text-slate-400'
-                  }`}
-                >
-                  {tab.count}
-                </span>
+                {tab.count > 0 && (
+                  <span
+                    className={`rounded-full px-1.5 py-0.2 text-[11px] ${
+                      active
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-100 text-slate-500'
+                    }`}
+                  >
+                    {tab.count}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
       </div>
 
-      {/* Prominent Clinical Disclaimer Banner when viewing Questions for Doctor */}
-      {activeTab === 'doctor_discussion' && (
-        <div className="flex items-start gap-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3.5 text-xs text-amber-200">
-          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-400" />
-          <div>
-            <span className="font-semibold text-amber-100">
-              Clinical Decision Guardrail — Non-Prescriptive Discussion Topics Only:{' '}
-            </span>
-            GlycoLens never prescribes insulin doses, basal rates, or carb ratios. Use these data-backed observations purely as structured questions to review with your endocrinologist or certified diabetes care specialist.
-          </div>
-        </div>
-      )}
-
-      {/* Empty / Loading States */}
-      {filteredInsights.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-800 bg-slate-900/40 py-14 text-center">
-          <Sparkles className="h-8 w-8 text-emerald-400/70" />
-          <p className="mt-3 text-sm font-medium text-slate-200">
+      {/* Empty / Loading Placeholder */}
+      {visibleInsights.length === 0 ? (
+        <div className="flex flex-col items-center justify-center rounded-3xl border border-slate-200 bg-white py-16 text-center shadow-xs">
+          <p className="text-sm font-semibold text-slate-800">
             {isDiscovering
-              ? 'Specialist agents are testing hypotheses on your aligned signals...'
-              : insights.length === 0
-                ? 'Click "Run Autonomous Discovery" above to surface verified insights.'
-                : 'No insights in this category filter for the current dataset.'}
+              ? 'Reviewing your meals, walks, and sleep for personal patterns…'
+              : 'No findings in this category.'}
           </p>
-          <p className="mt-1 text-xs text-slate-400">
-            Verified cards stream in live as soon as their 95% confidence interval passes.
+          <p className="mt-1 text-xs text-slate-500">
+            Only consistent, repeatable patterns from your own logs are shown here.
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-          {filteredInsights.map((card) => {
-            const dom = DOMAIN_META[card.domain] ?? DOMAIN_META.activity;
-            const cat = CATEGORY_META[card.category] ?? CATEGORY_META.habit_experiment;
-            const DomainIcon = dom.Icon;
-            const CatIcon = cat.Icon;
-            const isDoctorCard = card.category === 'doctor_discussion';
+        <>
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            {visibleInsights.map((card) => {
+              const isExpanded = Boolean(expandedIds[card.id]);
+              const dom = DOMAIN_META[card.domain] ?? DOMAIN_META.activity;
+              const cat = CATEGORY_META[card.category] ?? CATEGORY_META.habit_experiment;
+              const DomainIcon = dom.Icon;
+              const isDoctorCard = card.category === 'doctor_discussion';
+              const isWalkRelated =
+                card.domain === 'activity' ||
+                card.evidence.hypothesis_id.includes('walk');
 
-            return (
-              <article
-                key={card.id}
-                className="flex flex-col justify-between rounded-2xl border border-slate-800/90 bg-slate-900/70 p-5 shadow-lg shadow-black/20 transition hover:border-slate-700"
-              >
-                <div className="space-y-3.5">
-                  {/* Top Badges Row */}
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div className="flex flex-wrap items-center gap-2">
+              const spec = card.evidence.chart_spec;
+              const fallbackBar: PairedBarItem = {
+                label: card.evidence.title,
+                condition_a_val: card.evidence.mean_a,
+                condition_b_val: card.evidence.mean_b,
+                max_val:
+                  Math.max(
+                    Math.abs(card.evidence.mean_a),
+                    Math.abs(card.evidence.mean_b),
+                    1
+                  ) * 1.15,
+                unit: card.evidence.unit,
+                higher_is_better: card.evidence.mean_b >= card.evidence.mean_a,
+              };
+              const allBars =
+                spec?.bars && spec.bars.length > 0 ? spec.bars : [fallbackBar];
+              const primaryBar = allBars[0];
+              const extraBars = allBars.slice(1);
+              const condALabel = spec?.condition_a_label || 'Current pattern';
+              const condBLabel = spec?.condition_b_label || 'Comparison pattern';
+
+              return (
+                <article
+                  key={card.id}
+                  className={`flex flex-col justify-between rounded-3xl border bg-white p-6 transition ${
+                    isExpanded
+                      ? 'border-teal-600/45 shadow-md ring-2 ring-teal-600/10'
+                      : 'border-slate-200/90 shadow-xs hover:border-slate-300 hover:shadow-sm'
+                  }`}
+                >
+                  {/* Clickable Summary Surface */}
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => toggleCard(card.id)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        toggleCard(card.id);
+                      }
+                    }}
+                    className="cursor-pointer space-y-4 outline-none"
+                  >
+                    {/* Calm Single Eyebrow + Soft Impact Pill */}
+                    <div className="flex items-center justify-between gap-2">
                       <span
-                        className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${dom.badgeClass}`}
+                        className={`inline-flex items-center gap-1.5 text-xs font-semibold ${
+                          isDoctorCard ? 'text-blue-700' : 'text-slate-500'
+                        }`}
                       >
-                        <DomainIcon className="h-3 w-3" />
-                        {dom.label}
+                        {isDoctorCard ? (
+                          <Stethoscope className="h-3.5 w-3.5 text-blue-600" />
+                        ) : (
+                          <DomainIcon className="h-3.5 w-3.5 text-teal-700" />
+                        )}
+                        {dom.label} · {cat.label}
                       </span>
+
                       <span
-                        className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${cat.pillClass}`}
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          isDoctorCard
+                            ? 'bg-blue-50 text-blue-800 border border-blue-200/80'
+                            : 'bg-teal-50 text-teal-800 border border-teal-200/80'
+                        }`}
                       >
-                        <CatIcon className="h-3 w-3" />
-                        {cat.label}
+                        {card.impact_badge}
                       </span>
                     </div>
 
-                    <span className="inline-flex items-center gap-1 rounded-lg border border-emerald-500/35 bg-emerald-500/15 px-2.5 py-1 font-mono text-xs font-semibold text-emerald-300">
-                      <CheckCircle2 className="h-3.5 w-3.5" />
-                      {card.impact_badge}
-                    </span>
+                    {/* Clear Headline */}
+                    <h3 className="text-lg font-bold leading-snug text-slate-900">
+                      {card.headline}
+                    </h3>
+
+                    {/* Simple 2-Bar Visual */}
+                    <SimpleTwoBarComparison
+                      bar={primaryBar}
+                      condALabel={condALabel}
+                      condBLabel={condBLabel}
+                    />
+
+                    {/* Calm Action Callout */}
+                    <div
+                      className={`rounded-2xl px-4 py-3 text-xs leading-relaxed sm:text-[13px] ${
+                        isDoctorCard
+                          ? 'bg-blue-50/75 text-slate-800 border border-blue-100'
+                          : 'bg-teal-50/65 text-slate-800 border border-teal-100'
+                      }`}
+                    >
+                      <span
+                        className={`mr-1.5 font-bold ${
+                          isDoctorCard ? 'text-blue-800' : 'text-teal-800'
+                        }`}
+                      >
+                        {cat.actionPrefix}
+                      </span>
+                      <span className={isExpanded ? '' : 'line-clamp-2'}>
+                        {card.try_this_week}
+                      </span>
+                    </div>
                   </div>
 
-                  {/* Doctor Card Clinical Disclaimer */}
-                  {isDoctorCard && (
-                    <div className="flex items-start gap-2 rounded-lg border border-amber-500/35 bg-amber-500/10 px-3 py-2 text-[11px] leading-relaxed text-amber-200">
-                      <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-400" />
-                      <span>
-                        <strong>For Clinician Review Only:</strong> Retrospective pattern for discussion with your endocrinologist—do not alter pump or insulin settings unilaterally.
-                      </span>
+                  {/* EXPANDED DETAILS (Progressive Disclosure) */}
+                  {isExpanded && (
+                    <div className="mt-5 space-y-4 border-t border-slate-100 pt-4 text-xs sm:text-[13px]">
+                      <div>
+                        <div className="mb-1 text-xs font-semibold text-slate-500">
+                          Why this happens
+                        </div>
+                        <p className="leading-relaxed text-slate-700">
+                          {card.plain_explanation}
+                        </p>
+                      </div>
+
+                      {extraBars.length > 0 && (
+                        <div className="space-y-2.5">
+                          {extraBars.map((b, idx) => (
+                            <SimpleTwoBarComparison
+                              key={`${b.label}-${idx}`}
+                              bar={b}
+                              condALabel={condALabel}
+                              condBLabel={condBLabel}
+                            />
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Supporting Dates */}
+                      <div className="rounded-2xl border border-slate-200/80 bg-[#F8FAFC] p-3.5">
+                        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                          <CalendarClock className="h-3.5 w-3.5 text-teal-700" />
+                          Examples from your history
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">{card.personal_anchor}</p>
+                        {card.evidence.example_timestamps.length > 0 && (
+                          <div className="mt-2.5 flex flex-wrap gap-1.5">
+                            {card.evidence.example_timestamps.slice(0, 4).map((ts) => {
+                              const datePart = ts.slice(0, 10);
+                              return (
+                                <button
+                                  key={ts}
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onInspectDate?.(datePart);
+                                  }}
+                                  title="View in Day Explorer"
+                                  className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 shadow-2xs transition hover:border-teal-600/40 hover:text-teal-800"
+                                >
+                                  {ts}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Quiet Data Confidence Note */}
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                        <span>
+                          Compared <strong>{card.evidence.n_a}</strong> vs{' '}
+                          <strong>{card.evidence.n_b}</strong> instances
+                        </span>
+                        <span>
+                          95% confidence range: {formatSigned(card.evidence.ci_95_low)} to{' '}
+                          {formatSigned(card.evidence.ci_95_high)} {card.evidence.unit}
+                        </span>
+                      </div>
+
+                      {isDoctorCard && (
+                        <div className="rounded-xl border border-blue-200/80 bg-blue-50/70 p-3 text-xs leading-relaxed text-blue-900">
+                          <strong>Note for your clinic visit:</strong> GlycoLens highlights retrospective patterns to discuss with your doctor and never recommends changing insulin doses on your own.
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* Headline & Plain Explanation */}
-                  <div>
-                    <h3 className="text-base font-semibold leading-snug text-slate-100">
-                      {card.headline}
-                    </h3>
-                    <p className="mt-1.5 text-xs leading-relaxed text-slate-300 sm:text-sm">
-                      {card.plain_explanation}
-                    </p>
-                  </div>
-
-                  {/* Interactive Custom SVG Paired-Bar Comparison Chart */}
-                  <PairedBarSvgChart card={card} />
-
-                  {/* Personal Timestamp Anchor */}
-                  <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-800/80 bg-slate-950/60 px-3 py-2 text-xs text-slate-300">
-                    <CalendarClock className="h-3.5 w-3.5 shrink-0 text-sky-400" />
-                    <span className="font-medium text-slate-200">Personal Anchor:</span>
-                    <span className="text-slate-300">{card.personal_anchor}</span>
-                    {card.evidence.example_timestamps.length > 0 && (
-                      <div className="flex flex-wrap gap-1">
-                        {card.evidence.example_timestamps.slice(0, 3).map((ts) => (
-                          <span
-                            key={ts}
-                            className="rounded bg-slate-800/90 px-1.5 py-0.5 font-mono text-[10px] text-sky-300"
-                          >
-                            {ts}
-                          </span>
-                        ))}
-                      </div>
+                  {/* Footer Actions */}
+                  <div className="mt-4 flex items-center justify-between gap-2 border-t border-slate-100 pt-3">
+                    {isWalkRelated && onOpenWalkSimulator ? (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onOpenWalkSimulator();
+                        }}
+                        className="inline-flex cursor-pointer items-center gap-1 text-xs font-semibold text-teal-700 transition hover:text-teal-900"
+                      >
+                        Try Pre-Walk Check
+                        <ArrowRight className="h-3.5 w-3.5" />
+                      </button>
+                    ) : (
+                      <span className="text-xs text-slate-400">
+                        {card.evidence.n_a + card.evidence.n_b} events analyzed
+                      </span>
                     )}
-                  </div>
-                </div>
 
-                {/* Highlighted "Try This Week" Box */}
-                <div
-                  className={`mt-4 rounded-xl border p-3.5 ${
-                    isDoctorCard
-                      ? 'border-amber-500/30 bg-gradient-to-r from-amber-500/10 to-slate-900/70'
-                      : 'border-emerald-500/30 bg-gradient-to-r from-emerald-500/12 to-teal-500/5'
-                  }`}
-                >
-                  <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-300">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    {isDoctorCard ? 'Bring to Next Appointment' : 'Try This Week'}
+                    <button
+                      type="button"
+                      onClick={() => toggleCard(card.id)}
+                      className="inline-flex cursor-pointer items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold text-slate-600 transition hover:bg-slate-100 hover:text-slate-900"
+                    >
+                      {isExpanded ? (
+                        <>
+                          Show less
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </>
+                      ) : (
+                        <>
+                          Details &amp; dates
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </>
+                      )}
+                    </button>
                   </div>
-                  <p className="mt-1 text-xs font-medium leading-relaxed text-slate-100 sm:text-sm">
-                    {card.try_this_week}
-                  </p>
-                </div>
-              </article>
-            );
-          })}
-        </div>
+                </article>
+              );
+            })}
+          </div>
+
+          {activeTab === 'all' && filteredInsights.length > INITIAL_VISIBLE && (
+            <div className="flex justify-center pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAllCards((v) => !v)}
+                className="inline-flex cursor-pointer items-center gap-1.5 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-xs font-semibold text-slate-700 shadow-xs transition hover:border-slate-300 hover:text-slate-950"
+              >
+                {showAllCards ? (
+                  <>
+                    Show fewer findings
+                    <ChevronUp className="h-3.5 w-3.5" />
+                  </>
+                ) : (
+                  <>
+                    Show {hiddenCount} more finding{hiddenCount > 1 ? 's' : ''}
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  </>
+                )}
+              </button>
+            </div>
+          )}
+        </>
       )}
     </section>
   );
