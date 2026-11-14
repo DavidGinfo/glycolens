@@ -1,0 +1,36 @@
+# Personal Health Data & Local Exports (NEVER commit real patient/personal exports!)
+data/
+uploads/
+*.zip
+*.csv
+!sample_data/synthetic/*.csv
+
+# Secrets & Environment
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Databases & Local Cache
+*.db
+*.sqlite
+*.sqlite3
+*.duckdb
+*.duckdb.wal
+
+# Frontend / Node
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+
+# OS / IDE
+.DS_Store
+.idea/
